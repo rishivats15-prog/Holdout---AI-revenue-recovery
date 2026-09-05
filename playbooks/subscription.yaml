@@ -1,0 +1,215 @@
+# Subscription-lane treatment playbook — one ordered ladder per root cause.
+#
+# Every cause diagnosis/subscription.yaml can produce must have a ladder
+# here, and vice versa (validated at load time in decide/ladder.py). A
+# ladder is a plain, ordered list of rungs; decide/decide.py never branches
+# on a cause by name — it only ever asks "what's rung N for this cause?"
+#
+# Each rung has exactly one of:
+#   channel        — a real outbound/automated treatment (retry/sms/whatsapp/voice)
+#   terminal_state — hands the case straight to a case-machine state (no outreach)
+# never both, never neither — enforced at load time.
+#
+# cost_paise is a rough per-attempt channel cost, used from Phase 4 onward
+# by the policy gate's cost ceiling / EV floor checks — Decide itself never
+# reads it to make a decision, only to attach it to the proposal.
+lane: subscription
+name: subscription_default
+version: "1"
+
+# How long past a promised payment date the business waits before treating
+# a promise-to-pay as broken. How many days out a customer's promise falls
+# in the first place is the simulator's business (sim/ground_truth.yaml,
+# promise_to_pay) — this is the business's own tolerance, not the
+# customer's behaviour, so it belongs in the playbook, not ground truth.
+promise_to_pay:
+  grace_days: 3
+
+ladders:
+  # Retry-viable causes: full escalation ladder (silent retry -> SMS ->
+  # WhatsApp with an alternate-instrument offer -> Hinglish IVR -> human).
+  balance_timing:
+    - rung: 0
+      action_type: silent_smart_retry
+      channel: retry
+      cooldown_minutes: 60
+      cost_paise: 150
+      copy_template: null
+    - rung: 1
+      action_type: sms_pre_debit_notice
+      channel: sms
+      cooldown_minutes: 1440
+      cost_paise: 20
+      copy_template: sms_balance_timing_v1
+    - rung: 2
+      action_type: whatsapp_alternate_instrument
+      channel: whatsapp
+      cooldown_minutes: 1440
+      cost_paise: 35
+      copy_template: whatsapp_alternate_instrument_v1
+    - rung: 3
+      action_type: ivr_hinglish
+      channel: voice
+      cooldown_minutes: 2880
+      cost_paise: 300
+      copy_template: ivr_hinglish_v1
+    - rung: 4
+      action_type: human_agent_handoff
+      channel: null
+      terminal_state: human_queue
+      cooldown_minutes: 0
+      cost_paise: 0
+      copy_template: null
+
+  issuer_soft_decline:
+    - rung: 0
+      action_type: retry_alternate_route
+      channel: retry
+      cooldown_minutes: 120
+      cost_paise: 150
+      copy_template: null
+    - rung: 1
+      action_type: sms_retry_notice
+      channel: sms
+      cooldown_minutes: 1440
+      cost_paise: 20
+      copy_template: sms_issuer_decline_v1
+    - rung: 2
+      action_type: whatsapp_alternate_instrument
+      channel: whatsapp
+      cooldown_minutes: 1440
+      cost_paise: 35
+      copy_template: whatsapp_alternate_instrument_v1
+    - rung: 3
+      action_type: ivr_hinglish
+      channel: voice
+      cooldown_minutes: 2880
+      cost_paise: 300
+      copy_template: ivr_hinglish_v1
+    - rung: 4
+      action_type: human_agent_handoff
+      channel: null
+      terminal_state: human_queue
+      cooldown_minutes: 0
+      cost_paise: 0
+      copy_template: null
+
+  # Transient — one immediate automated retry, then fall back to the
+  # standard dunning ladder if that alone didn't clear it.
+  gateway_timeout:
+    - rung: 0
+      action_type: auto_retry_immediate
+      channel: retry
+      cooldown_minutes: 5
+      cost_paise: 150
+      copy_template: null
+    - rung: 1
+      action_type: sms_retry_notice
+      channel: sms
+      cooldown_minutes: 1440
+      cost_paise: 20
+      copy_template: sms_issuer_decline_v1
+    - rung: 2
+      action_type: human_agent_handoff
+      channel: null
+      terminal_state: human_queue
+      cooldown_minutes: 0
+      cost_paise: 0
+      copy_template: null
+
+  # Not retry-viable until the credential itself changes — start straight
+  # at the fix, never a blind retry.
+  stale_credential:
+    - rung: 0
+      action_type: card_update_link_sms
+      channel: sms
+      cooldown_minutes: 1440
+      cost_paise: 20
+      copy_template: sms_card_update_v1
+    - rung: 1
+      action_type: whatsapp_upi_autopay_offer
+      channel: whatsapp
+      cooldown_minutes: 1440
+      cost_paise: 35
+      copy_template: whatsapp_upi_autopay_v1
+    - rung: 2
+      action_type: human_agent_handoff
+      channel: null
+      terminal_state: human_queue
+      cooldown_minutes: 0
+      cost_paise: 0
+      copy_template: null
+
+  mandate_cap_exceeded:
+    - rung: 0
+      action_type: mandate_amendment_sms
+      channel: sms
+      cooldown_minutes: 1440
+      cost_paise: 20
+      copy_template: sms_mandate_amendment_v1
+    - rung: 1
+      action_type: whatsapp_split_debit_offer
+      channel: whatsapp
+      cooldown_minutes: 1440
+      cost_paise: 35
+      copy_template: whatsapp_split_debit_v1
+    - rung: 2
+      action_type: human_agent_handoff
+      channel: null
+      terminal_state: human_queue
+      cooldown_minutes: 0
+      cost_paise: 0
+      copy_template: null
+
+  # Never retry — the mandate itself is gone; only a re-mandate flow helps.
+  mandate_dead:
+    - rung: 0
+      action_type: re_mandate_link_sms
+      channel: sms
+      cooldown_minutes: 1440
+      cost_paise: 20
+      copy_template: sms_re_mandate_v1
+    - rung: 1
+      action_type: whatsapp_re_mandate_reminder
+      channel: whatsapp
+      cooldown_minutes: 1440
+      cost_paise: 35
+      copy_template: whatsapp_re_mandate_v1
+    - rung: 2
+      action_type: human_agent_handoff
+      channel: null
+      terminal_state: human_queue
+      cooldown_minutes: 0
+      cost_paise: 0
+      copy_template: null
+
+  dead_instrument:
+    - rung: 0
+      action_type: alternate_instrument_sms
+      channel: sms
+      cooldown_minutes: 1440
+      cost_paise: 20
+      copy_template: sms_alternate_instrument_v1
+    - rung: 1
+      action_type: whatsapp_alternate_instrument
+      channel: whatsapp
+      cooldown_minutes: 1440
+      cost_paise: 35
+      copy_template: whatsapp_alternate_instrument_v1
+    - rung: 2
+      action_type: human_agent_handoff
+      channel: null
+      terminal_state: human_queue
+      cooldown_minutes: 0
+      cost_paise: 0
+      copy_template: null
+
+  # Never contact — straight to the risk queue, all dunning suppressed.
+  risk_fraud:
+    - rung: 0
+      action_type: route_to_risk_queue
+      channel: null
+      terminal_state: human_queue
+      cooldown_minutes: 0
+      cost_paise: 0
+      copy_template: null

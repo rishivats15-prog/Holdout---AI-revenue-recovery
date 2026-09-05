@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="pagehead">
+  <h1 class="display pagehead__title">Scoreboard</h1>
+  <p class="prose pagehead__lede">
+    Where the money at risk went, and how much of what came back is actually
+    attributable to treatment. The holdout arm is the counterfactual: the gap
+    between the two recovered bands is the entire product.
+  </p>
+</header>
+
+<!-- Hero: flow of money. All geometry computed in dashboard/viz.py. -->
+<figure class="flow flow__stage">
+  <svg viewBox="0 0 {{ flow.width }} {{ flow.height }}" role="img"
+       aria-label="Exposure of {{ flow.total_paise | paise }} splits into a treated arm and a holdout arm; each splits into recovered and not recovered. The incremental recovery attributed to treatment is {{ flow.incremental_label }}.">
+
+    <g class="flow__reveal">
+      {% for ribbon in flow.ribbons %}
+        <path class="flow-ribbon flow-ribbon--{{ ribbon.tone }}" d="{{ ribbon.path }}"></path>
+      {% endfor %}
+      {% for band in flow.bands %}
+        <rect class="flow-node--{{ band.tone }}" x="{{ band.x }}" y="{{ '%.2f'|format(band.y) }}"
+              width="{{ band.width }}" height="{{ '%.2f'|format(band.height) }}"></rect>
+      {% endfor %}
+    </g>
+
+    <g class="flow__annotations">
+      {% for band in flow.bands if band.key in ('exposure', 'treated', 'holdout') %}
+        <text class="flow-amount" x="{{ band.x }}" y="{{ '%.2f'|format(band.amount_y) }}">{{ band.amount_label }}</text>
+        <text class="flow-detail" x="{{ band.x }}" y="{{ '%.2f'|format(band.detail_y) }}">{{ band.label }} · {{ band.detail }}</text>
+      {% endfor %}
+
+      {% for anchor in flow.label_anchors %}
+        <text class="flow-amount" x="{{ flow.label_x }}" y="{{ '%.2f'|format(anchor.y) }}">{{ anchor.amount }}</text>
+        <text class="flow-detail" x="{{ flow.label_x }}" y="{{ '%.2f'|format(anchor.y + 13) }}">{{ anchor.descriptor }}</text>
+      {% endfor %}
+
+      {% if flow.callout %}
+        <path class="flow-bracket" d="{{ flow.callout.bracket_path }}"></path>
+        <text class="flow-callout" x="{{ flow.callout.text_x }}" y="{{ '%.2f'|format(flow.callout.text_y) }}">{{ flow.callout.label }}</text>
+        <text class="flow-callout-sub" x="{{ flow.callout.text_x }}" y="{{ '%.2f'|format(flow.callout.sub_y) }}">{{ flow.callout.sub_label }}</text>
+      {% endif %}
+    </g>
+  </svg>
+</figure>
+
+<!-- Figure row. Incremental is the only figure in the display serif. -->
+<div class="figures">
+  <div class="figure">
+    <span class="label figure__label">Incremental recovered</span>
+    <span class="figure__value figure__value--hero" data-countup="{{ (report.incremental_paise / 100) | round | int }}"
+          data-countup-prefix="₹">{{ report.incremental_paise | paise }}</span>
+    <span class="figure__note">
+      {% if report.incremental_ci %}
+        95% CI {{ report.incremental_ci.lower | rate }} — {{ report.incremental_ci.upper | rate }}
+        on a {{ report.incremental_rate | rate }} rate delta<br>
+      {% endif %}
+      {% if report.ground_truth and report.ground_truth.expected_incremental_rate is not none %}
+        <strong>True simulated effect {{ report.ground_truth.expected_incremental_rate | rate }}</strong>
+        — {{ 'inside' if report.ground_truth.expected_within_ci else 'outside' }} the interval
+      {% endif %}
+    </span>
+  </div>
+
+  <div class="figure">
+    <span class="label figure__label">Gross recovered</span>
+    <span class="figure__value figure__value--soft">{{ report.treatment.gross_recovered_paise | paise }}</span>
+    <span class="figure__note">Treated arm, in window.<br>Most of it would have arrived anyway.</span>
+  </div>
+
+  <div class="figure">
+    <span class="label figure__label">Cost per ₹100</span>
+    <span class="figure__value">
+      {% if report.cost_per_100_incremental_paise is not none %}₹{{ '%.2f'|format(report.cost_per_100_incremental_paise / 100) }}{% else %}—{% endif %}
+    </span>
+    <span class="figure__note">Of incremental recovery.<br>Against gross:
+      {% if report.cost_per_100_gross_paise is not none %}₹{{ '%.2f'|format(report.cost_per_100_gross_paise / 100) }}{% else %}—{% endif %}
+    </span>
+  </div>
+
+  <div class="figure">
+    <span class="label figure__label">Net recovered</span>
+    <span class="figure__value">{{ report.net_incremental_paise | paise }}</span>
+    <span class="figure__note">Incremental less {{ report.total_cost_paise | paise_exact }}<br>of channel cost.</span>
+  </div>
+
+  <div class="figure">
+    <span class="label figure__label">Median days to cash</span>
+    <span class="figure__value">
+      {% if report.treatment.median_days_to_cash is not none %}{{ '%.1f'|format(report.treatment.median_days_to_cash) }}{% else %}—{% endif %}
+    </span>
+    <span class="figure__note">Treated. Holdout:
+      {% if report.holdout.median_days_to_cash is not none %}{{ '%.1f'|format(report.holdout.median_days_to_cash) }}{% else %}—{% endif %}<br>
+      {{ '%.2f'|format(report.treatment.touches_per_recovery or 0) }} touches per recovery.</span>
+  </div>
+
+  <div class="figure">
+    <span class="label figure__label">Policy-veto rate</span>
+    <span class="figure__value">{{ report.treatment.veto_rate | rate }}</span>
+    <span class="figure__note">{{ report.treatment.vetoed_actions }} of {{ report.treatment.total_actions }} actions<br>
+      stopped before sending. <a href="/vetoes">See the log</a>.</span>
+  </div>
+</div>
+
+<!-- The measurement validating itself. -->
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">The measurement, checked against known truth</h2>
+    <span class="label">Synthetic ground truth</span>
+  </div>
+
+  <div class="split">
+    <div>
+      <p class="prose">
+        Because the data is synthetic, the true treatment effect is written down
+        in <span class="mono">sim/ground_truth.yaml</span> before any measurement
+        happens. The interval below is what this batch measured; the moss line is
+        what the simulator actually did. A live gateway would offer nothing to
+        check the interval against — that is the reason to run this on synthetic
+        data, not a caveat about it.
+      </p>
+
+      {% if interval %}
+        <div class="interval" style="margin-top:22px">
+          <svg viewBox="0 0 {{ interval.width }} {{ interval.height }}" width="{{ interval.width }}" height="{{ interval.height }}" role="img"
+               aria-label="Measured incremental rate {{ interval.measured_label }}, 95% confidence interval {{ interval.lower_label }} to {{ interval.upper_label }}, true simulated effect {{ interval.truth_label }}, which is {{ 'inside' if interval.truth_inside else 'outside' }} the interval.">
+            <rect class="interval__bar" x="{{ interval.ci_x }}" y="14" width="{{ interval.ci_width }}" height="12"></rect>
+            <line class="interval__cap" x1="{{ interval.ci_x }}" y1="10" x2="{{ interval.ci_x }}" y2="30"></line>
+            <line class="interval__cap" x1="{{ interval.ci_x + interval.ci_width }}" y1="10" x2="{{ interval.ci_x + interval.ci_width }}" y2="30"></line>
+            <line class="interval__zero" x1="{{ interval.zero_x }}" y1="6" x2="{{ interval.zero_x }}" y2="34"></line>
+            <circle class="interval__point" cx="{{ interval.measured_x }}" cy="20" r="4"></circle>
+            <line class="interval__truth" x1="{{ interval.truth_x }}" y1="8" x2="{{ interval.truth_x }}" y2="32"></line>
+            <text class="interval__tick" x="{{ interval.ci_x }}" y="44" text-anchor="middle">{{ interval.lower_label }}</text>
+            <text class="interval__tick" x="{{ interval.ci_x + interval.ci_width }}" y="44" text-anchor="middle">{{ interval.upper_label }}</text>
+            <text class="interval__tick" x="{{ interval.zero_x }}" y="44" text-anchor="middle">0</text>
+          </svg>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <span class="label">● Measured {{ interval.measured_label }}</span>
+          <span class="label" style="color:var(--recovered)">▎True effect {{ interval.truth_label }}</span>
+        </div>
+      {% endif %}
+    </div>
+
+    <dl class="side__block" style="margin:0">
+      <div class="side__title label">Check</div>
+      <div class="side__row"><dt>Measured lift</dt><dd>{{ report.incremental_rate | rate }}</dd></div>
+      <div class="side__row"><dt>True effect</dt><dd>{{ report.ground_truth.expected_incremental_rate | rate }}</dd></div>
+      <div class="side__row"><dt>Absolute error</dt><dd>{{ report.ground_truth.absolute_error | rate }}</dd></div>
+      <div class="side__row"><dt>Treated rate</dt><dd>{{ report.treatment.recovery_rate | rate }} vs {{ report.ground_truth.expected_treatment_rate | rate }}</dd></div>
+      <div class="side__row"><dt>Holdout rate</dt><dd>{{ report.holdout.recovery_rate | rate }} vs {{ report.ground_truth.expected_holdout_rate | rate }}</dd></div>
+      <div class="side__row"><dt>Window factor</dt><dd>{{ '%.2f'|format(report.ground_truth.window_factor) }}</dd></div>
+      <div class="side__row"><dt>Diagnosis accuracy</dt><dd>{{ report.diagnosis_accuracy.accuracy | rate(1) }}</dd></div>
+      <div class="side__row" style="border-top:1px solid var(--rule-strong);padding-top:10px;margin-top:6px">
+        <dt>Verdict</dt>
+        <dd>
+          <span class="verdict-stamp {{ '' if report.ground_truth.expected_within_ci else 'verdict-stamp--broken' }}">
+            {{ 'PASS' if report.ground_truth.expected_within_ci else 'FAIL' }}
+          </span>
+        </dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<!-- Harm, at equal weight to the money. -->
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">Harm, treated versus holdout</h2>
+    <span class="label">Scale 0 — {{ harm_bars[0].scale_label }}</span>
+  </div>
+
+  <div class="split">
+    <div class="harm">
+      {% for bar in harm_bars %}
+        <div class="harm__row">
+          <span class="harm__label">{{ bar.label }}</span>
+          <div class="harm__bars">
+            <div class="harm__bar">
+              <span class="harm__arm">Treated</span>
+              {% if bar.treated_width > 0 %}
+                <span class="harm__track harm__track--treated" style="width:{{ bar.treated_width }}px"></span>
+              {% else %}<span class="harm__zero"></span>{% endif %}
+              <span class="harm__figure">{{ bar.treated_label }}</span>
+            </div>
+            <div class="harm__bar">
+              <span class="harm__arm">Holdout</span>
+              {% if bar.holdout_width > 0 %}
+                <span class="harm__track harm__track--holdout" style="width:{{ bar.holdout_width }}px"></span>
+              {% else %}<span class="harm__zero"></span>{% endif %}
+              <span class="harm__figure">{{ bar.holdout_label }}</span>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <p class="prose">
+      The holdout's zeroes are structural, not measured: nothing was ever sent
+      to it, so it cannot generate a complaint or a veto. That asymmetry is the
+      finding. Treatment buys its lift at the cost of the rates on the upper bar
+      of each pair, and those rates belong beside the money, not in a footnote.
+    </p>
+  </div>
+</section>
+
+<!-- Per-cause lift. -->
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">Lift by root cause</h2>
+    <span class="label">Diagnosed cause · {{ report.strata }} strata</span>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Root cause</th>
+        <th class="num">Treated</th>
+        <th class="num">Treated rate</th>
+        <th class="num">Holdout</th>
+        <th class="num">Holdout rate</th>
+        <th class="num">Lift</th>
+        <th class="num">Incremental</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lift in report.cause_lifts %}
+        <tr>
+          <td class="state-bar state-bar--{{ 'recovered' if lift.incremental_rate > 0 else 'neutral' }}">
+            <a class="mono" href="/cases?cause={{ lift.cause }}">{{ lift.cause }}</a>
+          </td>
+          <td class="num">{{ lift.treatment_cases }}</td>
+          <td class="num">{{ lift.treatment_rate | rate(1) }}</td>
+          <td class="num">{{ lift.holdout_cases }}</td>
+          <td class="num">{{ lift.holdout_rate | rate(1) }}</td>
+          <td class="num" style="color:{{ 'var(--recovered)' if lift.incremental_rate > 0 else 'var(--veto)' }}">
+            {{ lift.incremental_rate | rate(1) }}
+          </td>
+          <td class="num">{{ lift.incremental_paise | paise }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="prose" style="margin-top:14px">
+    Per-cause strata are small, so individual rows are noisy — a negative row
+    is sampling noise on a dozen holdout cases, not evidence that treatment
+    hurt. The batch-level figure above is the one carrying a confidence interval.
+  </p>
+</section>
+
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="pagehead">
+  <h1 class="display pagehead__title">Cases</h1>
+  <p class="prose pagehead__lede">
+    Every case in the batch, both arms. Open one to replay exactly what the
+    system decided, what the policy gate allowed, and what happened.
+  </p>
+</header>
+
+<div class="filters">
+  <span class="label" style="margin-right:6px">State</span>
+  <a class="chip" href="/cases?sort={{ filters.sort }}" {% if not filters.state %}aria-pressed="true"{% endif %}>All</a>
+  {% for value, count in states %}
+    <a class="chip" href="/cases?state={{ value }}&amp;sort={{ filters.sort }}"
+       {% if filters.state == value %}aria-pressed="true"{% endif %}>{{ value }}<span class="chip__count">{{ count }}</span></a>
+  {% endfor %}
+</div>
+
+<div class="filters">
+  <span class="label" style="margin-right:6px">Arm</span>
+  {% for value in ('treatment', 'holdout') %}
+    <a class="chip" href="/cases?arm={{ value }}&amp;sort={{ filters.sort }}"
+       {% if filters.arm == value %}aria-pressed="true"{% endif %}>{{ value }}</a>
+  {% endfor %}
+  <span class="label" style="margin:0 6px 0 18px">Cause</span>
+  {% for value, count in causes %}
+    <a class="chip" href="/cases?cause={{ value }}&amp;sort={{ filters.sort }}"
+       {% if filters.cause == value %}aria-pressed="true"{% endif %}>{{ value }}<span class="chip__count">{{ count }}</span></a>
+  {% endfor %}
+</div>
+
+<div class="filters" style="margin-bottom:24px">
+  <span class="label" style="margin-right:6px">Sort</span>
+  {% for key, label in sorts %}
+    <a class="chip" href="/cases?sort={{ key }}{% if filters.state %}&amp;state={{ filters.state }}{% endif %}{% if filters.cause %}&amp;cause={{ filters.cause }}{% endif %}{% if filters.arm %}&amp;arm={{ filters.arm }}{% endif %}"
+       {% if filters.sort == key %}aria-pressed="true"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</div>
+
+{% if page.rows %}
+  <div class="table-scroll">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Case</th>
+        <th>Customer</th>
+        <th>Root cause</th>
+        <th>Arm</th>
+        <th class="num">Rung</th>
+        <th class="num">Sent</th>
+        <th class="num">Vetoed</th>
+        <th class="num">Exposure</th>
+        <th>State</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in page.rows %}
+        <tr>
+          <td class="state-bar state-bar--{{ row.tone }}"><a class="mono" href="/cases/{{ row.case.id }}">{{ '%04d'|format(row.case.id) }}</a></td>
+          <td>{{ row.customer.name or row.customer.external_ref }}</td>
+          <td class="mono" style="font-size:12px">{{ row.cause }}</td>
+          <td class="mono" style="font-size:12px">{{ row.arm }}</td>
+          <td class="num">{{ row.case.ladder_rung }}</td>
+          <td class="num">{{ row.touches }}</td>
+          <td class="num" style="{{ 'color:var(--veto)' if row.vetoes else '' }}">{{ row.vetoes or '' }}</td>
+          <td class="num">{{ row.case.exposure_amount | paise }}</td>
+          <td><span class="badge badge--{{ row.tone }}">{{ row.case.state }}</span></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if page.has_prev or page.has_next %}
+    <div class="pager">
+      {% if page.has_prev %}<a class="chip" href="/cases?sort={{ filters.sort }}{% if filters.state %}&amp;state={{ filters.state }}{% endif %}{% if filters.cause %}&amp;cause={{ filters.cause }}{% endif %}{% if filters.arm %}&amp;arm={{ filters.arm }}{% endif %}&amp;offset={{ page.prev_offset }}">Previous</a>{% endif %}
+      {% if page.has_next %}<a class="chip" href="/cases?sort={{ filters.sort }}{% if filters.state %}&amp;state={{ filters.state }}{% endif %}{% if filters.cause %}&amp;cause={{ filters.cause }}{% endif %}{% if filters.arm %}&amp;arm={{ filters.arm }}{% endif %}&amp;offset={{ page.next_offset }}">Next</a>{% endif %}
+      <span class="label">{{ page.offset + 1 }}–{{ page.offset + page.shown }} of {{ page.total }}</span>
+    </div>
+  {% endif %}
+{% else %}
+  <div class="empty">
+    <p class="empty__what">
+      No case matches this combination of filters. The batch has cases in other
+      states and causes — clear the filters to see them, or reseed if the
+      database is empty.
+    </p>
+    <a class="chip" href="/cases">Clear all filters</a>
+  </div>
+{% endif %}
+
+{% endblock %}

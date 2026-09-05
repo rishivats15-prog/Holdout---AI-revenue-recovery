@@ -1,0 +1,69 @@
+# Subscription-lane diagnosis table (CLAUDE.md's failure-signal table,
+# re-expressed against the exact gateway failure codes sim/failure_codes.py
+# generates). Pure data — the rules engine in diagnosis/rules.py only reads
+# this; it never hardcodes a cause.
+#
+# safe_fallback_cause is where the LLM fallback lands when a model (real or
+# stubbed) returns anything that isn't one of this lane's own causes. It
+# must itself be one of the causes below — validated at load time.
+lane: subscription
+safe_fallback_cause: issuer_soft_decline
+
+rules:
+  - failure_codes: ["INSUFFICIENT_FUNDS"]
+    cause: balance_timing
+    retry_viable: "timed"
+    description: >
+      Insufficient funds — retry at salary date or T+1 morning, with a
+      pre-debit notice. The customer's balance timing is the problem, not
+      the instrument.
+
+  - failure_codes: ["CARD_EXPIRED", "INVALID_CARD"]
+    cause: stale_credential
+    retry_viable: "not_until_fixed"
+    description: >
+      Card expired or invalid — retries burn attempts until the credential
+      itself is replaced. Send a card-update link; offer a UPI Autopay
+      switch.
+
+  - failure_codes: ["DO_NOT_HONOR", "ISSUER_SOFT_DECLINE"]
+    cause: issuer_soft_decline
+    retry_viable: "different_route"
+    description: >
+      Issuer soft decline — often a limit or issuer-side risk check. Retry
+      via an alternate acquirer or a different time of day.
+
+  - failure_codes: ["MANDATE_NOT_FOUND", "MANDATE_REVOKED"]
+    cause: mandate_dead
+    retry_viable: "never"
+    description: >
+      Mandate is dead — retries here are pure burn. Only a re-mandate flow
+      can recover this.
+
+  - failure_codes: ["MANDATE_LIMIT_EXCEEDED"]
+    cause: mandate_cap_exceeded
+    retry_viable: "no"
+    description: >
+      Debit exceeds the mandate ceiling — amend the mandate or split the
+      debit; retrying the same amount will fail again.
+
+  - failure_codes: ["GATEWAY_TIMEOUT"]
+    cause: gateway_timeout
+    retry_viable: "immediate"
+    description: >
+      Transient gateway timeout — safe to auto-retry within minutes under
+      an idempotency key.
+
+  - failure_codes: ["RISK_FRAUD_SUSPECTED"]
+    cause: risk_fraud
+    retry_viable: "never"
+    description: >
+      Risk or fraud decline — route to the risk queue and suppress all
+      dunning. Never retry or contact.
+
+  - failure_codes: ["ACCOUNT_CLOSED", "INSTRUMENT_FROZEN"]
+    cause: dead_instrument
+    retry_viable: "no"
+    description: >
+      Account closed or frozen — no amount of retrying helps. Collect an
+      alternate instrument.

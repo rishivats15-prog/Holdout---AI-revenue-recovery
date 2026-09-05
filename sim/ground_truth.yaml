@@ -1,0 +1,107 @@
+# The synthetic world's known truth for the subscription lane.
+#
+# root_cause_distribution: how often each root cause occurs among failures.
+# natural_recovery_rate: probability a case recovers within the 14-day
+#   attribution window with NO treatment at all (i.e. the holdout arm's true
+#   rate). This is what Phase 6's eval checks its measured holdout rate
+#   against, and what the incremental-lift sanity check is ultimately
+#   grounded in. Nothing in /diagnosis, /policy, or /orchestrator may read
+#   this file — only /sim (to simulate outcomes, from Phase 5 on) and /eval
+#   (to sanity-check measurement) are allowed to.
+lane: subscription
+seed: 20260820
+
+root_cause_distribution:
+  balance_timing: 0.35
+  stale_credential: 0.18
+  issuer_soft_decline: 0.14
+  gateway_timeout: 0.10
+  mandate_dead: 0.08
+  dead_instrument: 0.06
+  mandate_cap_exceeded: 0.05
+  risk_fraud: 0.04
+
+natural_recovery_rate:
+  balance_timing: 0.45
+  stale_credential: 0.08
+  issuer_soft_decline: 0.25
+  gateway_timeout: 0.55
+  mandate_dead: 0.02
+  dead_instrument: 0.03
+  mandate_cap_exceeded: 0.05
+  risk_fraud: 0.01
+
+# Additive lift to the natural rate for a case ASSIGNED to the treatment
+# arm — the TRUE simulated treatment effect, and what Phase 6's eval
+# measures its incremental lift against. Applied at the arm level, not per
+# delivered message: a treatment case the policy gate suppressed at rung 0
+# still carries its cause's uplift. That's deliberate, because a holdout
+# comparison measures intent-to-treat by construction — the denominator is
+# every case randomized into treatment, including the ones policy stopped.
+# A per-delivery uplift would describe a population the experiment never
+# isolated, and eval would have nothing honest to check itself against.
+#
+# Causes where the ladder offers the actual fix the customer
+# needs (mandate_dead's re-mandate link, stale_credential's card update)
+# get the biggest lift; causes that mostly resolve on their own anyway
+# (gateway_timeout, balance_timing) get a smaller marginal boost.
+# risk_fraud gets none — it's never treated, so there's nothing to lift.
+treatment_uplift:
+  balance_timing: 0.18
+  stale_credential: 0.22
+  issuer_soft_decline: 0.15
+  gateway_timeout: 0.10
+  mandate_dead: 0.25
+  mandate_cap_exceeded: 0.20
+  dead_instrument: 0.12
+  risk_fraud: 0.00
+
+# The attribution window eval measures against, and the wider range a
+# case's (single, pre-determined) recovery day is actually drawn from.
+# Scheduling some recoveries beyond the window on purpose gives eval's
+# 14-day cutoff real cases to exclude, instead of it being decorative.
+attribution_window_days: 14
+recovery_scheduling_max_day: 20
+
+# Whether a case recovers at all is decided ONCE per case (see
+# determine_recovery in sim/outcomes.py), not re-rolled at every touch —
+# a per-touch roll would compound across a multi-rung ladder and inflate
+# the measured rate well past natural_recovery_rate/treatment_uplift,
+# which would make the ground-truth sanity check meaningless. Deciding
+# once means the arms' cumulative recovery rates converge on these exact
+# YAML numbers as the batch grows, and the *measured* incremental lift is
+# an honest estimate of treatment_uplift, not an artifact of ladder length.
+
+promise_to_pay:
+  # Chance a delivered, human-facing touch prompts a promise-to-pay
+  # conversation rather than silence. Pure timeline texture — it does NOT
+  # affect whether the case ultimately recovers or when; that's already
+  # fixed by determine_recovery. A promise "breaks" only in the sense that
+  # payment hadn't landed by the grace deadline; it may still land later.
+  prompt_rate: 0.35
+  promise_days_min: 3
+  promise_days_max: 10
+
+# Chance a delivered, human-facing touch generates a complaint/dispute
+# instead of (never together with) a promise — routes the case straight
+# to human_queue, matching "dispute or risk" in the state machine. Never
+# applies to holdout: nothing was sent, so there's nothing to complain
+# about — which is exactly the harm-metric comparison eval reports.
+dispute_rate: 0.015
+
+# Fraction of episodes whose failure signal is genuinely ambiguous free text
+# rather than a clean gateway code — these exercise the Phase 2 LLM-fallback
+# classifier. The true cause is still recorded as ground truth; only the
+# *observable* failure_code is hidden.
+ambiguous_signal_rate: 0.06
+
+retries_per_episode:
+  min: 1
+  max: 3
+
+exposure_amount:
+  distribution: lognormal
+  median_paise: 79900   # ₹799
+  sigma: 0.6
+  min_paise: 9900        # ₹99
+  max_paise: 499900      # ₹4,999

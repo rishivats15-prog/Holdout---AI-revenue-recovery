@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="pagehead">
+  <h1 class="display pagehead__title">Playbooks</h1>
+  <p class="prose pagehead__lede">
+    The treatment ladders, read straight from
+    <span class="mono">playbooks/{{ playbook.lane }}.yaml</span>. Nothing in the
+    decide step branches on a root cause by name — it only ever asks the playbook
+    what rung comes next. Adding a lane means writing one more YAML file and one
+    signal adapter, with no change to the orchestrator, the policy gate, or the
+    measurement code.
+  </p>
+</header>
+
+<section>
+  <div class="section__head">
+    <h2 class="section__title">Bounds every rung passes through</h2>
+    <span class="label">Policy v{{ policy_version }} · {{ checks | length }} checks</span>
+  </div>
+  <div class="filters">
+    {% for name in checks %}<span class="chip">{{ name }}</span>{% endfor %}
+  </div>
+  <p class="prose" style="margin-top:12px">
+    Each is a separate function with its own tests, evaluated in this order. The
+    first one to object stops the send and its code is written to the action row.
+  </p>
+</section>
+
+{% for cause, rungs in playbook.ladders.items() %}
+  <section class="section">
+    <div class="section__head">
+      <h2 class="section__title mono" style="font-size:14px">{{ cause }}</h2>
+      <span class="label">{{ rungs | length }} rungs</span>
+    </div>
+
+    <table class="table table--dense">
+      <thead>
+        <tr>
+          <th class="num">Rung</th>
+          <th>Action</th>
+          <th>Channel</th>
+          <th>Copy template</th>
+          <th class="num">Cooldown</th>
+          <th class="num">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rung in rungs %}
+          <tr>
+            <td class="num state-bar state-bar--{{ 'neutral' if rung.channel else 'veto' }}">{{ rung.rung }}</td>
+            <td class="mono" style="font-size:12px">{{ rung.action_type }}</td>
+            <td class="mono" style="font-size:12px">
+              {% if rung.channel %}{{ rung.channel }}{% else %}
+                <span class="code">→ {{ rung.terminal_state }}</span>
+              {% endif %}
+            </td>
+            <td class="mono dim" style="font-size:11.5px">{{ rung.copy_template or '—' }}</td>
+            <td class="num">{{ rung.cooldown_minutes }}m</td>
+            <td class="num">{{ rung.cost_paise }}p</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endfor %}
+
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">Diagnosis table</h2>
+    <span class="label">{{ rules.code_to_rule | length }} failure codes → {{ rules.causes | length }} causes</span>
+  </div>
+  <table class="table table--dense">
+    <thead>
+      <tr><th>Failure code</th><th>Root cause</th><th>Retry viable</th><th>Correct intervention</th></tr>
+    </thead>
+    <tbody>
+      {% for code, rule in rules.code_to_rule.items() %}
+        <tr>
+          <td class="mono" style="font-size:12px">{{ code }}</td>
+          <td class="mono" style="font-size:12px">{{ rule.cause }}</td>
+          <td class="mono" style="font-size:12px">{{ rule.retry_viable }}</td>
+          <td class="prose" style="font-size:13px;max-width:none">{{ rule.description }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="prose" style="margin-top:14px">
+    A signal whose failure code matches no row here is genuinely ambiguous, and
+    only then does the LLM fallback classify it — constrained to this same set of
+    causes, never able to invent a new one.
+  </p>
+</section>
+
+{% endblock %}

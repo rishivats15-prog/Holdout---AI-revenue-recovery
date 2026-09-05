@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="pagehead">
+  <h1 class="display pagehead__title">Case {{ case.id }}</h1>
+  <p class="prose pagehead__lede">
+    Rendered straight from the case's append-only <span class="mono">case_events</span>
+    ledger — every node below is a row in that table, in order. Where the policy
+    gate stopped an action, the spine breaks and the case visibly does not pass through.
+  </p>
+</header>
+
+<div class="replay">
+
+  <div class="timeline">
+    {% for node in replay.nodes %}
+      <div class="node node--{{ node.tone }}{{ ' node--action' if node.kind == 'action' }}{{ ' node--veto' if node.kind == 'gate' }}{{ ' node--recovered' if node.tone == 'recovered' }}{{ ' node--paused' if node.tone == 'paused' }}">
+        <span class="node__marker" aria-hidden="true"></span>
+
+        <div class="node__head">
+          <span class="node__title">{{ node.title }}</span>
+          <span class="node__time mono">{{ node.occurred_at | clock }}</span>
+        </div>
+
+        {% if node.summary %}<p class="prose" style="font-size:13.5px;margin-top:5px">{{ node.summary }}</p>{% endif %}
+
+        {% if node.meta %}
+          <div class="node__meta">
+            {% for label, value in node.meta %}
+              <div><span>{{ label }}</span>{{ value }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if node.kind == 'gate' %}
+          <!-- The gate the case did not pass through. Colour is never the
+               only signal: hatched fill, broken spine, uppercase code. -->
+          <div class="gate">
+            <div class="gate__head">
+              <span class="gate__blocked">Blocked by policy</span>
+              <span class="gate__reason">{{ node.reason_code }}</span>
+            </div>
+            <p class="gate__explain">{{ node.reason_text }}</p>
+
+            {% if node.checks %}
+              <details>
+                <summary>Rules evaluated ({{ node.checks | length }})</summary>
+                <div class="gate__checks">
+                  {% for check in node.checks %}
+                    <div class="gate__check {{ 'gate__check--failed' if check.failed }}">
+                      <b>{{ 'BLOCKED' if check.failed else 'PASS' }}</b>{{ check.label }}
+                    </div>
+                  {% endfor %}
+                </div>
+              </details>
+            {% endif %}
+          </div>
+        {% elif node.verdict_label == 'ALLOWED' %}
+          <div class="passed">
+            <span class="passed__verdict">Passed the gate · sent</span>
+          </div>
+        {% endif %}
+
+        {% if node.provenance %}
+          <div class="node__meta">
+            {% for label, value in node.provenance %}
+              <div><span>{{ label }}</span>{{ value }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <aside class="side">
+
+    <div class="side__block">
+      <div class="side__title label">Customer and exposure</div>
+      <dl style="margin:0">
+        <div class="side__row"><dt>Customer</dt><dd>{{ replay.customer.name or replay.customer.external_ref }}</dd></div>
+        <div class="side__row"><dt>Reference</dt><dd>{{ replay.customer.external_ref }}</dd></div>
+        <div class="side__row"><dt>Exposure</dt><dd>{{ case.exposure_amount | paise }}</dd></div>
+        <div class="side__row"><dt>State</dt><dd>
+          <span class="badge badge--{{ 'recovered' if case.state == 'recovered' else ('veto' if case.state in ('suppressed','human_queue') else ('at-risk' if case.state in ('paused','in_treatment') else 'neutral')) }}">{{ case.state }}</span>
+        </dd></div>
+        <div class="side__row"><dt>Arm</dt><dd>{{ replay.assignment.arm if replay.assignment else '—' }}</dd></div>
+        <div class="side__row"><dt>Stratum</dt><dd>{{ replay.assignment.stratum if replay.assignment else '—' }}</dd></div>
+        <div class="side__row"><dt>Detected</dt><dd>{{ case.detected_at | clock }}</dd></div>
+        <div class="side__row"><dt>DND</dt><dd>{{ 'yes' if replay.customer.dnd else 'no' }}</dd></div>
+        <div class="side__row"><dt>WhatsApp opt-in</dt><dd>{{ 'yes' if replay.customer.whatsapp_opt_in else 'no' }}</dd></div>
+      </dl>
+    </div>
+
+    {% if replay.diagnosis %}
+      <div class="side__block">
+        <div class="side__title label">Diagnosis</div>
+        <dl style="margin:0">
+          <div class="side__row"><dt>Root cause</dt><dd>{{ replay.diagnosis.cause }}</dd></div>
+          <div class="side__row"><dt>Confidence</dt><dd>{{ '%.2f'|format(replay.diagnosis.confidence) }}</dd></div>
+          <div class="side__row"><dt>Method</dt><dd>{{ replay.diagnosis.method }}</dd></div>
+        </dl>
+        <div class="chain" style="margin-top:12px">
+          {% for key, value in (replay.diagnosis.evidence or {}).items() %}
+            <div class="chain__row"><b>{{ key }}</b><span class="chain__hash">{{ value }}</span></div>
+          {% endfor %}
+        </div>
+        {% if replay.llm_diagnosed %}
+          <p class="prose" style="font-size:12.5px;margin-top:10px">
+            This signal was free text with no clean failure code, so the LLM
+            fallback classified it — constrained to the existing cause enum, never
+            able to invent a label. Its model, prompt template, input hash, raw
+            output and latency are all logged above.
+          </p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="side__block">
+      <div class="side__title label">Playbook</div>
+      <dl style="margin:0">
+        <div class="side__row"><dt>Lane</dt><dd>{{ case.lane }}</dd></div>
+        <div class="side__row"><dt>Version</dt><dd>v{{ replay.playbook_version }}</dd></div>
+        <div class="side__row"><dt>Current rung</dt><dd>{{ rung_label }}</dd></div>
+        <div class="side__row"><dt>Touches sent</dt><dd>{{ replay.executed_count }}</dd></div>
+        <div class="side__row"><dt>Actions vetoed</dt><dd>{{ replay.vetoed_count }}</dd></div>
+        <div class="side__row"><dt>Cost so far</dt><dd>{{ replay.total_cost_paise | paise_exact }}</dd></div>
+      </dl>
+    </div>
+
+    {% if replay.promise %}
+      <div class="side__block">
+        <div class="side__title label">Promise to pay</div>
+        <dl style="margin:0">
+          <div class="side__row"><dt>Promised</dt><dd>{{ replay.promise.promised_date | clock }}</dd></div>
+          <div class="side__row"><dt>Recorded</dt><dd>{{ replay.promise.occurred_at | clock }}</dd></div>
+          <div class="side__row"><dt>Paused until</dt><dd>{{ case.paused_until | clock }}</dd></div>
+        </dl>
+        <p class="prose" style="font-size:12.5px;margin-top:10px">
+          A promise freezes the case until the promised date plus the playbook's
+          grace window. Breaking it re-enters treatment one rung higher rather
+          than starting the ladder over.
+        </p>
+      </div>
+    {% endif %}
+
+    <div class="side__block">
+      <div class="side__title label">Event ledger</div>
+      <div class="row" style="gap:10px;margin-bottom:10px">
+        <span class="verdict-stamp {{ '' if chain.intact else 'verdict-stamp--broken' }}">Hash chain {{ chain.label }}</span>
+        <span class="label">{{ chain.events }} events</span>
+      </div>
+      {% if not chain.intact %}
+        <p class="prose" style="font-size:12.5px;color:var(--veto)">
+          Broken at event {{ chain.broken_at_event_id }} — {{ chain.reason }}.
+          Everything after that point is untrustworthy.
+        </p>
+      {% endif %}
+      <div class="chain">
+        {% for event in replay.events %}
+          <div class="chain__row">
+            <b>{{ event.event_type }}</b>
+            <span class="chain__hash">{{ event.hash | short_hash }}</span>
+          </div>
+        {% endfor %}
+      </div>
+      <p class="prose" style="font-size:12.5px;margin-top:10px">
+        Each row's hash covers its own content plus the previous row's hash.
+        Editing or deleting any past event breaks every hash after it, which is
+        what makes this an audit trail rather than a log.
+      </p>
+    </div>
+
+  </aside>
+</div>
+
+{% endblock %}

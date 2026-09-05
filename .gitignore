@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Generated data. The database is rebuilt from a fixed seed by `make seed`,
+# so committing it would only ever go stale.
+*.db
+
+# Operational state, not source: the kill switch is a runtime flag.
+KILL_SWITCH
+
+# Editor and local tooling
+.vscode/
+.idea/
+.claude/
+.DS_Store

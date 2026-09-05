@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="pagehead">
+  <h1 class="display pagehead__title">Veto log</h1>
+  <p class="prose pagehead__lede">
+    Every action the policy gate stopped before it was sent, with the bound that
+    stopped it. This page exists to show the gate is load-bearing rather than
+    decorative: a blocked action with a specific reason code is as much a result
+    as a recovery.
+  </p>
+</header>
+
+{% if distribution.total %}
+  <section>
+    <div class="section__head">
+      <h2 class="section__title">Which bounds fire</h2>
+      <span class="label">{{ distribution.total }} vetoes · {{ counts | length }} codes</span>
+    </div>
+
+    <div class="dist">
+      <svg viewBox="0 0 {{ distribution.width }} {{ distribution.height }}" preserveAspectRatio="none"
+           height="{{ distribution.height }}" role="img"
+           aria-label="Distribution of veto reason codes: {% for segment in distribution.segments %}{{ segment.label }} {{ segment.count }}{{ ', ' if not loop.last }}{% endfor %}.">
+        {% for segment in distribution.segments %}
+          <rect class="dist__segment" x="{{ segment.x }}" y="0" width="{{ segment.width }}"
+                height="{{ distribution.height }}" opacity="{{ segment.opacity }}"></rect>
+          {% if not loop.first %}
+            <line class="dist__divider" x1="{{ segment.x }}" y1="0" x2="{{ segment.x }}" y2="{{ distribution.height }}"></line>
+          {% endif %}
+        {% endfor %}
+      </svg>
+      <div class="dist__legend">
+        {% for segment in distribution.segments %}
+          <span class="dist__key">
+            <span class="dist__swatch" style="opacity:{{ segment.opacity }}"></span>
+            {{ segment.label }} · {{ segment.count }} · {{ segment.share | rate(1) }}
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+{% endif %}
+
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">Every bound in the gate</h2>
+    <span class="label">Policy v{{ policy_version }} · {{ bounds | length }} checks</span>
+  </div>
+
+  <div class="table-scroll">
+    <table class="table table--dense">
+      <thead>
+        <tr><th>Bound</th><th class="wrap">What it enforces</th><th>Reason codes</th><th class="num">Fired</th></tr>
+      </thead>
+      <tbody>
+        {% for bound in bounds %}
+          <tr>
+            <td class="state-bar state-bar--{{ 'veto' if bound.fired else 'neutral' }}">{{ bound.label }}</td>
+            <td class="wrap prose" style="font-size:13px;max-width:none;color:var(--ink-2)">{{ bound.bound }}</td>
+            <td>
+              {% for code in bound.codes %}
+                <a class="code" href="/vetoes?code={{ code }}">{{ code }}</a>{% if not loop.last %}<span class="dim mono" style="font-size:11px"> · </span>{% endif %}
+              {% endfor %}
+            </td>
+            <td class="num" style="{{ 'color:var(--veto)' if bound.fired else 'color:var(--ink-3)' }}">{{ bound.fired }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="prose" style="margin-top:14px">
+    All ten bounds are evaluated on every proposal, in this order, and the first
+    to object stops the send. Most show zero here because this batch never met
+    their conditions — the orchestrator ticks at midday, so quiet hours never
+    applies; no rung offers a waiver, so financial authority never binds. A zero
+    is the bound reporting that it had nothing to stop, not a bound that is
+    missing. Each has its own tests in <span class="mono">tests/test_policy.py</span>.
+  </p>
+</section>
+
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">Blocked actions</h2>
+    <span class="label">Showing {{ page.shown }} of {{ page.total }}</span>
+  </div>
+
+  <div class="filters">
+    <a class="chip" href="/vetoes" {% if not active_code %}aria-pressed="true"{% endif %}>All<span class="chip__count">{{ distribution.total }}</span></a>
+    {% for code, count in counts %}
+      <a class="chip" href="/vetoes?code={{ code }}" {% if active_code == code %}aria-pressed="true"{% endif %}>
+        {{ code }}<span class="chip__count">{{ count }}</span>
+      </a>
+    {% endfor %}
+  </div>
+
+  {% if page.rows %}
+    <div class="table-scroll">
+    <table class="table table--dense">
+      <thead>
+        <tr>
+          <th>Reason code</th>
+          <th>Case</th>
+          <th>Customer</th>
+          <th>Blocked action</th>
+          <th>Channel</th>
+          <th class="num">Rung</th>
+          <th>Root cause</th>
+          <th class="num">Exposure</th>
+          <th class="num">Blocked at</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in page.rows %}
+          <tr>
+            <td class="state-bar state-bar--veto"><span class="code">{{ row.action.veto_reason_code }}</span></td>
+            <td><a class="mono" href="/cases/{{ row.case.id }}">{{ '%04d'|format(row.case.id) }}</a></td>
+            <td>{{ row.customer.name or row.customer.external_ref }}</td>
+            <td class="mono" style="font-size:12px">{{ row.action.proposed_action }}</td>
+            <td class="mono" style="font-size:12px">{{ row.action.channel or '—' }}</td>
+            <td class="num">{{ row.action.ladder_rung }}</td>
+            <td class="mono" style="font-size:12px">{{ row.cause }}</td>
+            <td class="num">{{ row.case.exposure_amount | paise }}</td>
+            <td class="num">{{ row.action.created_at | clock }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    {% if page.has_prev or page.has_next %}
+      <div class="pager">
+        {% if page.has_prev %}
+          <a class="chip" href="/vetoes?{% if active_code %}code={{ active_code }}&amp;{% endif %}offset={{ page.prev_offset }}">Previous</a>
+        {% endif %}
+        {% if page.has_next %}
+          <a class="chip" href="/vetoes?{% if active_code %}code={{ active_code }}&amp;{% endif %}offset={{ page.next_offset }}">Next</a>
+        {% endif %}
+        <span class="label">{{ page.offset + 1 }}–{{ page.offset + page.shown }} of {{ page.total }}</span>
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="empty">
+      <p class="empty__what">
+        {% if active_code %}
+          No action in this batch was blocked with <span class="code">{{ active_code }}</span>.
+          The bound is enforced on every proposal — it simply never fired here.
+        {% else %}
+          No actions have been blocked. Either no batch has run yet, or every
+          proposal cleared all ten bounds.
+        {% endif %}
+      </p>
+      {% if active_code %}<a class="chip" href="/vetoes">Clear the filter</a>
+      {% else %}<a class="chip" href="/cases">Browse the case queue</a>{% endif %}
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}

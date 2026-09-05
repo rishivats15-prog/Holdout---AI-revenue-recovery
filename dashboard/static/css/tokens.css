@@ -1,0 +1,48 @@
+/* Design tokens. No template and no other stylesheet references a hex
+   directly — if a colour is needed that isn't here, it's a token that
+   hasn't been named yet, not a literal to inline.
+
+   --accent (terracotta) and --veto (oxblood) are deliberately close.
+   Colour is therefore never the only signal separating an allowed action
+   from a blocked one: vetoed elements also carry a structural cue — a
+   break in the timeline spine, a hatched fill, an uppercase reason code.
+   Everything on every page stays legible in greyscale. */
+
+:root {
+  --ground:         #EFE7D8;   /* page */
+  --surface:        #F7F2E7;   /* raised panels, rail */
+  --surface-high:   #FCF9F2;   /* overlays */
+
+  --rule:           #DCD0B9;   /* hairlines, column grid */
+  --rule-strong:    #C6B69B;   /* table header underline, active borders */
+
+  --ink:            #17140F;   /* primary */
+  --ink-2:          #5C5344;   /* secondary */
+  --ink-3:          #8E8371;   /* muted — all mono utility labels */
+
+  --accent:         #B65A2E;   /* terracotta — interactive, emphasis */
+  --accent-soft:    #E8CDB6;   /* tint fills, hover, selected rows */
+
+  --recovered:      #5F7145;   /* moss — money in */
+  --recovered-soft: #DCE0C9;
+  --veto:           #8A2E22;   /* oxblood — policy blocked */
+  --veto-soft:      #EBD3CC;
+  --at-risk:        #B8862F;   /* ochre — exposure, pending, paused */
+  --at-risk-soft:   #EEDCB8;
+
+  /* Type roles */
+  --display: "Bodoni Moda", "Times New Roman", serif;
+  --prose:   "Newsreader", Georgia, serif;
+  --ui:      "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono:    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Layout */
+  --rail-width: 210px;
+  --content-max: 1180px;
+  --gutter: 40px;
+  --radius-control: 3px;
+  --radius-panel: 4px;
+
+  /* The single elevation level. Warm-tinted, never grey. */
+  --overlay-shadow: 0 18px 48px -20px rgba(90, 62, 34, 0.42);
+}

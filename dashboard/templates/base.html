@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} · AI Revenue Recovery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}">
+</head>
+<body>
+<div class="layout">
+
+  <nav class="rail" aria-label="Sections">
+    <div class="rail__mark">
+      <strong>AI Revenue Recovery</strong>
+      <span class="label">Subscription lane</span>
+    </div>
+
+    <div class="rail__nav">
+      {% for item in nav %}
+        <a class="rail__link" href="{{ item.href }}"
+           {% if item.active %}aria-current="page"{% endif %}>{{ item.label }}</a>
+      {% endfor %}
+    </div>
+
+    <div class="rail__foot">
+      <div class="rail__state">
+        <span class="label">Circuit breaker</span>
+        <span class="mono" style="font-size:10px;color:{{ 'var(--veto)' if breaker.tripped else 'var(--recovered)' }}">
+          <span class="dot {{ 'dot--halt' if breaker.tripped else 'dot--ok' }}"></span>{{ breaker.label }}
+        </span>
+      </div>
+      <div class="rail__state">
+        <span class="label">Outbound</span>
+        <span class="mono" style="font-size:10px;color:{{ 'var(--veto)' if kill_switch.engaged else 'var(--recovered)' }}">
+          <span class="dot {{ 'dot--halt' if kill_switch.engaged else 'dot--ok' }}"></span>{{ 'HALTED' if kill_switch.engaged else 'RUNNING' }}
+        </span>
+      </div>
+
+      <div class="killswitch">
+        {% if kill_switch.engaged %}
+          <form method="post" action="/resume">
+            <button class="killswitch__button killswitch__button--resume" type="submit">Resume outbound</button>
+          </form>
+        {% else %}
+          <button class="killswitch__button" type="button" data-reveals="halt-confirm"
+                  aria-expanded="false" hidden>Halt all outbound</button>
+          <div class="killswitch__confirm" id="halt-confirm">
+            <p>Vetoes every outbound action with <span class="code">KILL_SWITCH_ENGAGED</span>. Nothing is rolled back.</p>
+            <form method="post" action="/halt" data-halt-form>
+              <label class="label" for="halt-input">Type HALT to confirm</label>
+              <input class="killswitch__input" id="halt-input" name="confirm" autocomplete="off"
+                     spellcheck="false" placeholder="HALT" data-halt-input>
+              <div class="killswitch__row" style="margin-top:8px">
+                <button type="submit" data-halt-submit>Halt</button>
+              </div>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="main__grid" aria-hidden="true">
+      <div><span></span><span></span><span></span><span></span></div>
+    </div>
+
+    {% if kill_switch.engaged %}
+      <div class="halt-band" role="status">
+        <strong>Outbound halted</strong>
+        <span>
+          Every proposed action is being vetoed with <span class="code">KILL_SWITCH_ENGAGED</span>.
+          Engaged {{ kill_switch.engaged_at_display }}{% if kill_switch.actor %} by {{ kill_switch.actor }}{% endif %}.
+        </span>
+      </div>
+    {% endif %}
+
+    <div class="content">
+      <div class="statusbar">
+        {% for item in status_bar %}
+          <span class="statusbar__item {{ 'statusbar__item--mark' if item.mark }}">{{ item.text }}</span>
+        {% endfor %}
+        <span class="statusbar__item statusbar__item--clock">{{ clock }}</span>
+      </div>
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+</div>
+<script src="{{ url_for('static', path='js/app.js') }}"></script>
+</body>
+</html>

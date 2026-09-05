@@ -1,0 +1,20 @@
+# Business-estimated probability of recovery per cause, used ONLY by the
+# expected-value-floor policy check.
+#
+# Deliberately independent from sim/ground_truth.yaml's secret
+# natural-recovery baseline: this is what the business believes going in,
+# not what the simulator secretly knows. It is allowed to be wrong, the
+# same way a real prior would be — that's the point of it being a prior.
+# No decision code may ever read sim/ground_truth.yaml or
+# cases.true_root_cause; this file is the policy layer's own estimate.
+lane: subscription
+rung_decay_factor: 0.6   # each further touch is less likely to be the one that recovers the case
+base_recovery_probability:
+  balance_timing: 0.55
+  stale_credential: 0.35
+  issuer_soft_decline: 0.40
+  gateway_timeout: 0.65
+  mandate_dead: 0.15
+  mandate_cap_exceeded: 0.30
+  dead_instrument: 0.10
+  risk_fraud: 0.02

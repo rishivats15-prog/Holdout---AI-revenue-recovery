@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="pagehead">
+  <h1 class="display pagehead__title">No case {{ case_id }}</h1>
+</header>
+<div class="empty">
+  <p class="empty__what">
+    No case with id {{ case_id }} exists in this batch. Case ids are assigned by
+    the detect step and reset every time the database is reseeded.
+  </p>
+  <a class="chip" href="/cases">Browse the case queue</a>
+</div>
+{% endblock %}

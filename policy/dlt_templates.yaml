@@ -1,0 +1,12 @@
+# DLT-registered SMS template ids, subscription lane — a synthetic
+# stand-in for India's mandatory DLT (Distributed Ledger Technology) SMS
+# template registration. Any SMS template not on this list gets vetoed by
+# the consent/eligibility check regardless of who it's addressed to.
+lane: subscription
+approved_template_ids:
+  - sms_balance_timing_v1
+  - sms_issuer_decline_v1
+  - sms_card_update_v1
+  - sms_mandate_amendment_v1
+  - sms_re_mandate_v1
+  - sms_alternate_instrument_v1

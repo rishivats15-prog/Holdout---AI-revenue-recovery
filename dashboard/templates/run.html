@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="pagehead">
+  <h1 class="display pagehead__title">Live run</h1>
+  <p class="prose pagehead__lede">
+    The pipeline, one simulated day per click. Each day resolves any payments
+    that were due, breaks any promises past their grace window, then decides and
+    executes the next rung for every treatable case — through the policy gate.
+    This is the same orchestrator the batch runner uses, driven a day at a time.
+  </p>
+</header>
+
+{% if error %}
+  <div class="notice">
+    <span class="label">Run</span>
+    <span class="prose" style="font-size:13.5px">{{ error }}</span>
+  </div>
+{% endif %}
+
+<!-- Controls. Every one is a form post; there is no JavaScript on this page. -->
+<section class="runbar">
+  <div class="runbar__state">
+    {% if session %}
+      <span class="label">Day</span>
+      <span class="runbar__day mono">{{ session.tick_number }}<span class="dim">/{{ session.total_ticks }}</span></span>
+      <span class="runbar__track" aria-hidden="true">
+        <span class="runbar__fill" style="width:{{ '%.1f'|format(session.progress_pct) }}%"></span>
+      </span>
+      <span class="label">{{ 'Run complete' if session.is_complete else '%d days left'|format(session.days_remaining) }}</span>
+    {% elif snapshot.has_batch %}
+      <span class="label">Batch loaded · no live run</span>
+    {% else %}
+      <span class="label">No batch yet</span>
+    {% endif %}
+  </div>
+
+  <div class="runbar__actions">
+    {% if session and not session.is_complete %}
+      <form method="post" action="/run/tick">
+        <input type="hidden" name="days" value="1">
+        <button class="button button--primary" type="submit">Advance one day</button>
+      </form>
+      <form method="post" action="/run/tick">
+        <input type="hidden" name="days" value="5">
+        <button class="button" type="submit">Advance five</button>
+      </form>
+      <form method="post" action="/run/tick">
+        <input type="hidden" name="days" value="{{ session.days_remaining }}">
+        <button class="button" type="submit">Run to the end</button>
+      </form>
+    {% endif %}
+    <form method="post" action="/run/new">
+      <button class="button {{ 'button--primary' if not session }}" type="submit">
+        {{ 'Generate a batch' if not snapshot.has_batch else 'New batch' }}
+      </button>
+    </form>
+    {% if snapshot.has_batch %}
+      <details class="confirm">
+        <summary class="button button--quiet">Clear</summary>
+        <div class="confirm__body">
+          <p class="prose" style="font-size:12.5px">Empties every table. The run in progress ends.</p>
+          <form method="post" action="/run/reset">
+            <button class="button button--danger" type="submit">Clear everything</button>
+          </form>
+        </div>
+      </details>
+    {% endif %}
+  </div>
+</section>
+
+{% if not snapshot.has_batch %}
+
+  <div class="empty" style="margin-top:32px">
+    <p class="empty__what">
+      No batch exists yet. Generating one creates 900 synthetic customers and
+      their failed payments, folds the retries into deduplicated cases, diagnoses
+      each one, and randomizes them into treatment and holdout arms — but runs no
+      treatment at all. The run then starts at day zero with nothing done, which
+      is what makes it worth watching.
+    </p>
+    <form method="post" action="/run/new">
+      <button class="button button--primary" type="submit">Generate a batch</button>
+    </form>
+  </div>
+
+{% else %}
+
+  {% if not session %}
+    <div class="panel" style="margin-top:26px">
+      <p class="prose" style="max-width:74ch">
+        This batch already exists but is not being stepped here — a run started
+        with <span class="mono">make seed</span> advances all 21 days inside its
+        own process, so there are no per-day steps for this page to show. The
+        totals below are that finished batch. To watch a run happen a day at a
+        time, generate a new one; the generator is seeded, so you get the same
+        batch back.
+      </p>
+    </div>
+  {% endif %}
+
+  <!-- Where every case stands right now. -->
+  <section class="section">
+    <div class="section__head">
+      <h2 class="section__title">Where the {{ snapshot.total_cases }} cases stand</h2>
+      <span class="label">{{ snapshot.treated_cases }} treated · {{ snapshot.holdout_cases }} holdout</span>
+    </div>
+
+    <div class="states">
+      {% for state in snapshot.states %}
+        <div class="states__cell states__cell--{{ state.tone }}">
+          <span class="states__count mono">{{ state.count }}</span>
+          <span class="label states__name">{{ state.state.replace('_', ' ') }}</span>
+          <span class="states__bar" aria-hidden="true">
+            <span class="states__fill" style="width:{{ '%.1f'|format(state.share * 100) }}%"></span>
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- Running totals. -->
+  <div class="figures" style="margin-top:34px">
+    <div class="figure">
+      <span class="label figure__label">Recovered so far</span>
+      <span class="figure__value figure__value--hero">{{ snapshot.recovered_paise | paise }}</span>
+      <span class="figure__note">{{ snapshot.recovered_cases }} of {{ snapshot.total_cases }} cases, both arms.<br>
+        Attribution is settled on the scoreboard, not here.</span>
+    </div>
+    <div class="figure">
+      <span class="label figure__label">Exposure at risk</span>
+      <span class="figure__value figure__value--soft">{{ snapshot.exposure_paise | paise }}</span>
+      <span class="figure__note">Across every case in the batch.</span>
+    </div>
+    <div class="figure">
+      <span class="label figure__label">Touches sent</span>
+      <span class="figure__value">{{ snapshot.executed }}</span>
+      <span class="figure__note">Passed all ten policy bounds.</span>
+    </div>
+    <div class="figure">
+      <span class="label figure__label">Actions vetoed</span>
+      <span class="figure__value" style="color:var(--veto)">{{ snapshot.vetoed }}</span>
+      <span class="figure__note">Stopped before sending.<br><a href="/vetoes">See the log</a>.</span>
+    </div>
+    <div class="figure">
+      <span class="label figure__label">Promises broken</span>
+      <span class="figure__value">{{ session.totals.promises_broken if session else 0 }}</span>
+      <span class="figure__note">Each re-enters treatment one rung higher.</span>
+    </div>
+    <div class="figure">
+      <span class="label figure__label">Circuit breaker</span>
+      <span class="figure__value" style="color:{{ 'var(--veto)' if session and session.circuit_breaker.is_open() else 'var(--recovered)' }}">
+        {{ 'OPEN' if session and session.circuit_breaker.is_open() else 'CLOSED' }}
+      </span>
+      <span class="figure__note">Trips above 30% delivery failure.</span>
+    </div>
+  </div>
+
+  <!-- The arc of the run. -->
+  <section class="section">
+    <div class="section__head">
+      <h2 class="section__title">Activity by day</h2>
+      <span class="label">Cumulative</span>
+    </div>
+
+    {% if progression %}
+      <div class="runcharts">
+        {% for chart in (progression.recoveries, progression.actions) %}
+          <figure class="runchart">
+            <figcaption class="runchart__head">
+              <span class="runchart__title">{{ chart.title }}</span>
+              <span class="label">{{ chart.scale_note }}</span>
+            </figcaption>
+            <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img"
+                 aria-label="{{ chart.title }} over {{ progression.days }} days: {% for s in chart.series %}{{ s.label }} {{ s.final_value }}{{ ', ' if not loop.last }}{% endfor %}, against a scale of {{ chart.max_value }}.">
+              <line class="runchart__axis" x1="0" y1="{{ chart.baseline_y }}"
+                    x2="{{ chart.width }}" y2="{{ chart.baseline_y }}"></line>
+              {% for x, label in chart.day_ticks %}
+                <text class="runchart__tick" x="{{ x }}" y="{{ chart.height - 7 }}" text-anchor="middle">{{ label }}</text>
+              {% endfor %}
+              {% for s in chart.series %}
+                <polyline class="runchart__line runchart__line--{{ s.tone }}" points="{{ s.points }}"></polyline>
+                <circle class="runchart__dot runchart__dot--{{ s.tone }}" cx="{{ s.final_x }}" cy="{{ s.final_y }}" r="3.5"></circle>
+              {% endfor %}
+            </svg>
+            <div class="dist__legend">
+              {% for s in chart.series %}
+                <span class="dist__key">
+                  <span class="runchart__swatch runchart__swatch--{{ s.tone }}"></span>{{ s.label }} · {{ s.final_value }}
+                </span>
+              {% endfor %}
+            </div>
+          </figure>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">
+        <p class="empty__what">
+          Nothing has run yet. Advance a day and the lines start here — cases
+          recovered on the left, and what the policy gate let through versus
+          stopped on the right.
+        </p>
+      </div>
+    {% endif %}
+  </section>
+
+  <!-- What each day did. -->
+  {% if recent %}
+    <section class="section">
+      <div class="section__head">
+        <h2 class="section__title">What happened, most recent first</h2>
+        <span class="label">Last {{ recent | length }} days</span>
+      </div>
+
+      <div class="table-scroll">
+        <table class="table table--dense">
+          <thead>
+            <tr>
+              <th>Day</th><th class="num">Sent</th><th class="num">Vetoed</th><th class="num">Recovered</th>
+              <th class="num">Paused</th><th class="num">Promises broken</th><th class="num">Routed</th>
+              <th class="num">Rungs skipped</th><th class="num">Written off</th><th class="num">Suppressed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for result in recent %}
+              <tr>
+                <td class="state-bar state-bar--{{ 'neutral' if result.is_quiet else 'at-risk' }}">
+                  <span class="mono">{{ result.day_label }}</span>
+                  <span class="dim mono" style="font-size:10px"> {{ result.day.strftime('%d %b') }}</span>
+                </td>
+                <td class="num">{{ result.executed or '' }}</td>
+                <td class="num" style="{{ 'color:var(--veto)' if result.vetoed }}">{{ result.vetoed or '' }}</td>
+                <td class="num" style="{{ 'color:var(--recovered)' if result.recovered }}">{{ result.recovered or '' }}</td>
+                <td class="num">{{ result.paused or '' }}</td>
+                <td class="num">{{ result.promises_broken or '' }}</td>
+                <td class="num">{{ result.routed or '' }}</td>
+                <td class="num">{{ result.skipped_rungs or '' }}</td>
+                <td class="num">{{ result.written_off or '' }}</td>
+                <td class="num">{{ result.suppressed or '' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if session and session.is_complete %}
+    <div class="panel" style="margin-top:34px">
+      <p class="prose" style="max-width:70ch">
+        The run has finished all {{ session.total_ticks }} days. The
+        <a href="/">scoreboard</a> now measures it: treated against holdout, inside
+        the 14-day attribution window, with the measured lift checked against the
+        effect the simulator actually applied.
+      </p>
+    </div>
+  {% endif %}
+
+  <p class="prose" style="margin-top:26px;font-size:13px;color:var(--ink-3)">
+    The run's random state and circuit breaker are held in memory by this server
+    process, so restarting it abandons a run in progress. Stepping all
+    {{ session.total_ticks if session else 21 }} days by hand lands on the same
+    database <span class="mono">make seed</span> produces in one pass — it is the
+    same orchestrator either way.
+  </p>
+
+{% endif %}
+
+{% endblock %}
